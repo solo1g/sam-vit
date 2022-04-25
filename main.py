@@ -51,6 +51,11 @@ model_names = sorted(name for name in models.__dict__
 
 best_acc1 = 0
 
+epoch_loss={}
+epoch_loss['train']=[]
+epoch_loss['val']=[]
+epochs_list=[]
+
 DATASETS = {
     'cifar10': {
         'num_classes': 10,
@@ -98,7 +103,8 @@ def init_parser():
     parser.add_argument('-b', '--batch-size', default=128, type=int,
                         metavar='N',
                         help='mini-batch size (default: 128)', dest='batch_size')
-    parser.add_argument('--lr', default=0.0005, type=float,
+    parser.add_argument('--lr', default=0.1, type=float,
+    # changing lr to 0.0005 to 0.1 for SAM
                         help='initial learning rate')
     parser.add_argument('--weight-decay', default=3e-2, type=float,
                         help='weight decay (default: 1e-4)')
@@ -140,6 +146,7 @@ def init_parser():
 
 def main():
     global best_acc1
+    global epochs_list
 
     parser = init_parser()
     args = parser.parse_args()
@@ -159,13 +166,20 @@ def main():
 
     criterion = LabelSmoothingCrossEntropy()
 
+    epochs_list=[i+1 for i in range(args.epochs)]
+
     if (not args.no_cuda) and torch.cuda.is_available():
         torch.cuda.set_device(args.gpu_id)
         model.cuda(args.gpu_id)
         criterion = criterion.cuda(args.gpu_id)
 
-    optimizer = torch.optim.AdamW(model.parameters(), lr=args.lr,
-                                  weight_decay=args.weight_decay)
+    # optimizer = torch.optim.AdamW(model.parameters(), lr=args.lr,
+    #                               weight_decay=args.weight_decay)
+
+    base_optimizer=torch.optim.AdamW
+    from sam import SAM
+    optimizer = SAM(model.parameters(), base_optimizer, lr=args.lr,weight_decay=args.weight_decay)
+
 
     normalize = [transforms.Normalize(mean=img_mean, std=img_std)]
 
@@ -216,13 +230,27 @@ def main():
           f'final top-1: {acc1:.2f}')
     torch.save(model.state_dict(), args.checkpoint_path)
 
+    import matplotlib.pyplot as plt
+    plt.plot(epochs_list,epoch_loss['train'])
+
 
 def adjust_learning_rate(optimizer, epoch, args):
+    lr=args.lr
+    if epoch>=20 and epoch<30:
+      lr=0.001
+    elif epoch>=30 and epoch<35:
+      lr=0.0006
+    elif epoch>=35:
+      lr=0.0003
+    for param_group in optimizer.param_groups:
+      param_group['lr'] = lr
+    return None
+
     lr = args.lr
     if hasattr(args, 'warmup') and epoch < args.warmup:
         lr = lr / (args.warmup - epoch)
     elif not args.disable_cos:
-        lr *= 0.5 * (1. + math.cos(math.pi *
+        lr *= 0.9 * (1. + math.cos(math.pi *
                      (epoch - args.warmup) / (args.epochs - args.warmup)))
 
     for param_group in optimizer.param_groups:
@@ -251,6 +279,12 @@ def cls_train(train_loader, model, criterion, optimizer, epoch, args):
         if (not args.no_cuda) and torch.cuda.is_available():
             images = images.cuda(args.gpu_id, non_blocking=True)
             target = target.cuda(args.gpu_id, non_blocking=True)
+
+        def closure():
+          loss = criterion(model(images),target)
+          loss.backward()
+          return loss 
+
         output = model(images)
 
         loss = criterion(output, target)
@@ -260,19 +294,21 @@ def cls_train(train_loader, model, criterion, optimizer, epoch, args):
         loss_val += float(loss.item() * images.size(0))
         acc1_val += float(acc1[0] * images.size(0))
 
-        optimizer.zero_grad()
         loss.backward()
+        optimizer.step(closure)
+        optimizer.zero_grad()
+       
 
-        if args.clip_grad_norm > 0:
-            nn.utils.clip_grad_norm_(
-                model.parameters(), max_norm=args.clip_grad_norm, norm_type=2)
-
-        optimizer.step()
+        # if args.clip_grad_norm > 0:
+        #     nn.utils.clip_grad_norm_(
+        #         model.parameters(), max_norm=args.clip_grad_norm, norm_type=2)
 
         if args.print_freq >= 0 and i % args.print_freq == 0:
             avg_loss, avg_acc1 = (loss_val / n), (acc1_val / n)
             print(
                 f'[Epoch {epoch + 1}][Train][{i}] \t Loss: {avg_loss:.4e} \t Top-1 {avg_acc1:6.2f}')
+    
+    epoch_loss['train'].append(loss_val/len(train_loader))
 
 
 def cls_validate(val_loader, model, criterion, args, epoch=None, time_begin=None):
@@ -299,6 +335,7 @@ def cls_validate(val_loader, model, criterion, args, epoch=None, time_begin=None
                     f'[Epoch {epoch + 1}][Eval][{i}] \t Loss: {avg_loss:.4e} \t Top-1 {avg_acc1:6.2f}')
 
     avg_loss, avg_acc1 = (loss_val / n), (acc1_val / n)
+    epoch_loss['val'].append(avg_loss)
     total_mins = -1 if time_begin is None else (time() - time_begin) / 60
     print(
         f'[Epoch {epoch + 1}] \t \t Top-1 {avg_acc1:6.2f} \t \t Time: {total_mins:.2f}')

@@ -246,8 +246,8 @@ def main():
     fig.show()
     # -----------------------------------
     fig, ax = plt.subplots()
-    ax.plot(epochs_list, epoch_loss['train'], label='train')
-    ax.plot(epochs_list, epoch_loss['val'], label='val')
+    ax.plot(epochs_list, epoch_acc['train'], label='train')
+    ax.plot(epochs_list, epoch_acc['val'], label='val')
     ax.set_title("Accuracy Epoch Graph")
     ax.set_xlabel("Epoch")
     ax.set_ylabel("Accuracy")
@@ -330,8 +330,8 @@ def cls_train(train_loader, model, criterion, optimizer, epoch, args):
             print(
                 f'[Epoch {epoch + 1}][Train][{i}] \t Loss: {avg_loss:.4e} \t Top-1 {avg_acc1:6.2f}')
 
-    epoch_loss['train'].append(loss_val/len(train_loader))
-    epoch_acc['train'].append(acc1_val/len(train_loader))
+    epoch_loss['train'].append(loss_val/n)
+    epoch_acc['train'].append(acc1_val/n)
 
 
 def cls_validate(val_loader, model, criterion, args, epoch=None, time_begin=None):

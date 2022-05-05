@@ -31,15 +31,8 @@ class CCT(nn.Module):
         self.tokenizer = Tokenizer(n_input_channels=n_input_channels,
                                    n_output_channels=embedding_dim,
                                    kernel_size=kernel_size,
-                                   stride=stride,
-                                   padding=padding,
-                                   pooling_kernel_size=pooling_kernel_size,
-                                   pooling_stride=pooling_stride,
-                                   pooling_padding=pooling_padding,
-                                   max_pool=True,
-                                   activation=nn.ReLU,
                                    n_conv_layers=n_conv_layers,
-                                   conv_bias=False)
+                                   in_planes=64)  # mid filter size
 
         self.classifier = TransformerClassifier(
             sequence_length=self.tokenizer.sequence_length(n_channels=n_input_channels,

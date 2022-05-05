@@ -9,8 +9,6 @@ import torch.utils.data
 import torchvision.transforms as transforms
 import torchvision.datasets as datasets
 
-import model as models
-
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -44,10 +42,6 @@ class LabelSmoothingCrossEntropy(nn.Module):
     def forward(self, x, target):
         return self._compute_losses(x, target).mean()
 
-
-model_names = sorted(name for name in models.__dict__
-                     if name.islower() and not name.startswith("_")
-                     and callable(models.__dict__[name]))
 
 best_acc1 = 0
 
@@ -114,11 +108,6 @@ def init_parser():
     parser.add_argument('--clip-grad-norm', default=0., type=float,
                         help='gradient norm clipping (default: 0 (disabled))')
 
-    parser.add_argument('-m', '--model',
-                        type=str.lower,
-                        choices=model_names,
-                        default='cct_2', dest='model')
-
     parser.add_argument('-p', '--positional-embedding',
                         type=str.lower,
                         choices=['learnable', 'sine', 'none'],
@@ -157,15 +146,9 @@ def main():
     num_classes = DATASETS[args.dataset]['num_classes']
     img_mean, img_std = DATASETS[args.dataset]['mean'], DATASETS[args.dataset]['std']
 
-    model = models.__dict__[args.model](img_size=img_size,
-                                        num_classes=num_classes,
-                                        positional_embedding=args.positional_embedding,
-                                        n_conv_layers=args.conv_layers,
-                                        kernel_size=args.conv_size,
-                                        patch_size=args.patch_size,
-                                        pretrained=False,
-                                        arch='cct_2_3x2_32',
-                                        progress=True)
+    from model2 import CCT
+    model = CCT(img_size=img_size, embedding_dim=128, num_layers=2,
+                num_heads=2, mlp_ratio=1, num_classes=10, n_conv_layers=2)
 
     criterion = LabelSmoothingCrossEntropy()
 

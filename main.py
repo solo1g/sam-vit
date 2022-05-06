@@ -140,6 +140,9 @@ def main():
     optimizer = SAM(model.parameters(), base_optimizer,
                     lr=args.lr, weight_decay=args.weight_decay)
 
+    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
+        optimizer, T_max=args.epochs, eta_min=0)
+
     normalize = [transforms.Normalize(mean=img_mean, std=img_std)]
 
     augmentations = [CIFAR10Policy()]
@@ -173,11 +176,12 @@ def main():
     print("Beginning training")
     time_begin = time()
     for epoch in range(args.epochs):
-        adjust_learning_rate(optimizer, epoch, args)
+        # adjust_learning_rate(optimizer, epoch, args)
         cls_train(train_loader, model, criterion, optimizer, epoch, args)
         acc1 = cls_validate(val_loader, model, criterion,
                             args, epoch=epoch, time_begin=time_begin)
         best_acc1 = max(acc1, best_acc1)
+        scheduler.step()
 
     total_mins = (time() - time_begin) / 60
     print(f'Script finished in {total_mins:.2f} minutes, '
@@ -210,16 +214,16 @@ def main():
 
 
 def adjust_learning_rate(optimizer, epoch, args):
-    # lr = args.lr
-    # if epoch >= 20 and epoch < 30:
-    #     lr = 0.001
-    # elif epoch >= 30 and epoch < 35:
-    #     lr = 0.0006
-    # elif epoch >= 35:
-    #     lr = 0.0003
-    # for param_group in optimizer.param_groups:
-    #     param_group['lr'] = lr
-    # return None
+    lr = args.lr
+    if epoch >= 20 and epoch < 30:
+        lr = 0.001
+    elif epoch >= 30 and epoch < 35:
+        lr = 0.0006
+    elif epoch >= 35:
+        lr = 0.0003
+    for param_group in optimizer.param_groups:
+        param_group['lr'] = lr
+    return None
 
     tot_epochs = args.epochs
     LR = args.lr

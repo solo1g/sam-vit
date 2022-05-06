@@ -132,8 +132,8 @@ def main():
         model.cuda(0)
         criterion = criterion.cuda(0)
 
-    # optimizer = torch.optim.AdamW(model.parameters(), lr=args.lr,
-    #                               weight_decay=args.weight_decay)
+    optimizer = torch.optim.AdamW(model.parameters(), lr=args.lr,
+                                  weight_decay=args.weight_decay)
 
     base_optimizer = torch.optim.AdamW
     from sam import SAM

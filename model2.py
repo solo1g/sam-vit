@@ -208,7 +208,7 @@ class CCT(nn.Module):
                  n_conv_layers,   # conv layer for tokeniser
                  n_input_channels=3,    # 3 for images
                  kernel_size=3,     # remaining values should suit most
-                 dropout=0.,
+                 dropout=0.1,
                  *args, **kwargs):
         super(CCT, self).__init__()
 

@@ -4,10 +4,33 @@ from torch.nn import *
 import torch.nn.functional as F
 
 
+class RMSNorm(nn.Module):
+    def __init__(self, dim, eps=1e-8):
+        super().__init__()
+        self.scale = dim ** -0.5
+        self.eps = eps
+        self.g = nn.Parameter(torch.ones(dim))
+
+    def forward(self, x):
+        norm = torch.norm(x, dim=-1, keepdim=True) * self.scale
+        return x / norm.clamp(min=self.eps) * self.g
+
+
+class GLU(nn.Module):
+    def __init__(self, dim_in, dim_out, activation):
+        super().__init__()
+        self.act = activation
+        self.proj = nn.Linear(dim_in, dim_out * 2)
+
+    def forward(self, x):
+        x, gate = self.proj(x).chunk(2, dim=-1)
+        return x * self.act(gate)
+
+
 class PreNormWithDropPath(nn.Module):
     def __init__(self, dim, fn, drop_path_rate):
         super().__init__()
-        self.norm = nn.LayerNorm(dim)
+        self.norm = RMSNorm(dim)
         self.fn = fn
         self.drop_path = DropPath(drop_path_rate)
 
@@ -20,7 +43,7 @@ class FeedForward(nn.Module):
         super().__init__()
         self.net = nn.Sequential(
             nn.Linear(dim, hidden_dim),
-            nn.GELU(),
+            GLU(dim, hidden_dim, nn.SiLU()),
             nn.Dropout(dropout),
             nn.Linear(hidden_dim, dim),
             nn.Dropout(dropout)
@@ -193,7 +216,7 @@ class CCT(nn.Module):
                                    n_output_channels=embedding_dim,
                                    kernel_size=kernel_size,
                                    n_conv_layers=n_conv_layers,
-                                   in_planes=[16, 32, 64])
+                                   in_planes=[64, 80, 96])
 
         self.transformer = Transformer(
             embedding_dim=embedding_dim, depth=num_layers,
@@ -211,11 +234,11 @@ class CCT(nn.Module):
         self.dropout = Dropout(p=dropout)
 
         # self.mlp_head = nn.Sequential(
-        #     nn.LayerNorm(dim),
+        #     RMSNorm(dim),
         #     nn.Linear(dim, num_classes)
         # )
         # these two below are for same task commented above
-        self.norm = LayerNorm(embedding_dim)
+        self.norm = RMSNorm(embedding_dim)
         self.fc = Linear(embedding_dim, num_classes)
 
         self.attention_pool = Linear(embedding_dim, 1)
@@ -243,6 +266,6 @@ class CCT(nn.Module):
             init.trunc_normal_(m.weight, std=.02)
             if isinstance(m, Linear) and m.bias is not None:
                 init.constant_(m.bias, 0)
-        elif isinstance(m, LayerNorm):
+        elif isinstance(m, RMSNorm):
             init.constant_(m.bias, 0)
             init.constant_(m.weight, 1.0)

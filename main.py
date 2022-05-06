@@ -271,8 +271,8 @@ def cls_train(train_loader, model, criterion, optimizer, epoch, args):
     n = 0
     for i, (images, target) in enumerate(train_loader):
         if torch.cuda.is_available():
-            images = images.cuda(args.gpu_id, non_blocking=True)
-            target = target.cuda(args.gpu_id, non_blocking=True)
+            images = images.cuda(0, non_blocking=True)
+            target = target.cuda(0, non_blocking=True)
 
         def closure():
             loss = criterion(model(images), target)

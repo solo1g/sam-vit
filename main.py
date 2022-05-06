@@ -224,8 +224,8 @@ def adjust_learning_rate(optimizer, epoch, args):
     tot_epochs = args.epochs
     LR = args.lr
     stepsize = 2
-    k_min = 0.08
-    k_max = 0.04
+    k_min = 0.1
+    k_max = 0.08
 
     N_MIN = LR*0.9
     N_MAX = LR

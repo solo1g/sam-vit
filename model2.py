@@ -216,7 +216,7 @@ class CCT(nn.Module):
                                    n_output_channels=embedding_dim,
                                    kernel_size=kernel_size,
                                    n_conv_layers=n_conv_layers,
-                                   in_planes=[64, 80, 96])
+                                   in_planes=[64, 96])
 
         self.transformer = Transformer(
             embedding_dim=embedding_dim, depth=num_layers,

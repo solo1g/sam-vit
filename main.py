@@ -121,7 +121,7 @@ def main():
 
     from model2 import CCT
     model = CCT(img_size=img_size, embedding_dim=128, num_layers=2,
-                num_heads=2, mlp_ratio=1, num_classes=10, n_conv_layers=4)
+                num_heads=2, mlp_ratio=1, num_classes=10, n_conv_layers=3)
 
     criterion = LabelSmoothingCrossEntropy()
 

@@ -210,15 +210,8 @@ def main():
 
 
 def adjust_learning_rate(optimizer, epoch, args):
-    lr = args.lr
-    if epoch >= 20 and epoch < 30:
-        lr = 0.001
-    elif epoch >= 30 and epoch < 35:
-        lr = 0.0006
-    elif epoch >= 35:
-        lr = 0.0003
     for param_group in optimizer.param_groups:
-        param_group['lr'] = lr
+        param_group['lr'] = 0.0019913 - 0.0000478261*epoch
     return None
 
     tot_epochs = args.epochs

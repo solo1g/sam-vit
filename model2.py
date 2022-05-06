@@ -267,5 +267,6 @@ class CCT(nn.Module):
             if isinstance(m, Linear) and m.bias is not None:
                 init.constant_(m.bias, 0)
         elif isinstance(m, RMSNorm):
-            init.constant_(m.bias, 0)
+            # below line associated with nn.LayerNorm
+            # init.constant_(m.bias, 0)
             init.constant_(m.weight, 1.0)

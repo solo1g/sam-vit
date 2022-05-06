@@ -74,7 +74,7 @@ def init_parser():
 
     # Data args
     parser.add_argument('data', metavar='DIR',
-                        help='path to dataset')
+                        help='path to dataset', default='./cifar-10-dataset')
 
     parser.add_argument('--dataset',
                         type=str.lower,
@@ -93,14 +93,14 @@ def init_parser():
                         help='path to checkpoint (default: checkpoint.pth)')
 
     # Optimization hyperparams
-    parser.add_argument('--epochs', default=200, type=int, metavar='N',
+    parser.add_argument('--epochs', default=40, type=int, metavar='N',
                         help='number of total epochs to run')
     parser.add_argument('--warmup', default=5, type=int, metavar='N',
                         help='number of warmup epochs')
     parser.add_argument('-b', '--batch-size', default=128, type=int,
                         metavar='N',
                         help='mini-batch size (default: 128)', dest='batch_size')
-    parser.add_argument('--lr', default=0.1, type=float,
+    parser.add_argument('--lr', default=0.002, type=float,
                         # changing lr to 0.0005 to 0.1 for SAM
                         help='initial learning rate')
     parser.add_argument('--weight-decay', default=3e-2, type=float,

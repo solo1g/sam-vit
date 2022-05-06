@@ -311,7 +311,7 @@ def cls_validate(val_loader, model, criterion, args, epoch=None, time_begin=None
     n = 0
     with torch.no_grad():
         for i, (images, target) in enumerate(val_loader):
-            if (not args.no_cuda) and torch.cuda.is_available():
+            if torch.cuda.is_available():
                 images = images.cuda(0, non_blocking=True)
                 target = target.cuda(0, non_blocking=True)
 

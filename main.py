@@ -105,33 +105,6 @@ def init_parser():
                         help='initial learning rate')
     parser.add_argument('--weight-decay', default=3e-2, type=float,
                         help='weight decay (default: 1e-4)')
-    parser.add_argument('--clip-grad-norm', default=0., type=float,
-                        help='gradient norm clipping (default: 0 (disabled))')
-
-    parser.add_argument('-p', '--positional-embedding',
-                        type=str.lower,
-                        choices=['learnable', 'sine', 'none'],
-                        default='learnable', dest='positional_embedding')
-
-    parser.add_argument('--conv-layers', default=2, type=int,
-                        help='number of convolutional layers (cct only)')
-
-    parser.add_argument('--conv-size', default=3, type=int,
-                        help='convolution kernel size (cct only)')
-
-    parser.add_argument('--patch-size', default=4, type=int,
-                        help='image patch size (vit and cvt only)')
-
-    parser.add_argument('--disable-cos', action='store_true',
-                        help='disable cosine lr schedule')
-
-    parser.add_argument('--disable-aug', action='store_true',
-                        help='disable augmentation policies for training')
-
-    parser.add_argument('--gpu-id', default=0, type=int)
-
-    parser.add_argument('--no-cuda', action='store_true',
-                        help='disable cuda')
 
     return parser
 
@@ -154,7 +127,7 @@ def main():
 
     epochs_list = [i+1 for i in range(args.epochs)]
 
-    if (not args.no_cuda) and torch.cuda.is_available():
+    if torch.cuda.is_available():
         torch.cuda.set_device(args.gpu_id)
         model.cuda(args.gpu_id)
         criterion = criterion.cuda(args.gpu_id)
@@ -169,11 +142,7 @@ def main():
 
     normalize = [transforms.Normalize(mean=img_mean, std=img_std)]
 
-    augmentations = []
-    if not args.disable_aug:
-        augmentations += [
-            CIFAR10Policy()
-        ]
+    augmentations = [CIFAR10Policy()]
     augmentations += [
         transforms.RandomCrop(img_size, padding=4),
         transforms.RandomHorizontalFlip(),
@@ -241,23 +210,42 @@ def main():
 
 
 def adjust_learning_rate(optimizer, epoch, args):
-    lr = args.lr
-    if epoch >= 20 and epoch < 30:
-        lr = 0.001
-    elif epoch >= 30 and epoch < 35:
-        lr = 0.0006
-    elif epoch >= 35:
-        lr = 0.0003
-    for param_group in optimizer.param_groups:
-        param_group['lr'] = lr
-    return None
+    # lr = args.lr
+    # if epoch >= 20 and epoch < 30:
+    #     lr = 0.001
+    # elif epoch >= 30 and epoch < 35:
+    #     lr = 0.0006
+    # elif epoch >= 35:
+    #     lr = 0.0003
+    # for param_group in optimizer.param_groups:
+    #     param_group['lr'] = lr
+    # return None
 
-    lr = args.lr
-    if hasattr(args, 'warmup') and epoch < args.warmup:
-        lr = lr / (args.warmup - epoch)
-    elif not args.disable_cos:
-        lr *= 0.9 * (1. + math.cos(math.pi *
-                     (epoch - args.warmup) / (args.epochs - args.warmup)))
+    tot_epochs = args.epochs
+    LR = args.lr
+    stepsize = 2
+    k_min = 0.08
+    k_max = 0.04
+
+    N_MIN = LR*0.9
+    N_MAX = LR
+
+    n_min = N_MIN
+    n_max = N_MAX
+
+    lr = LR
+
+    for epoch in range(1, tot_epochs+1):
+        warmup = args.warmup
+        if epoch <= warmup:
+            lr = lr
+        else:
+            ep = epoch-warmup
+            n_max = N_MAX*math.exp(-ep*k_max)
+            n_min = N_MIN*math.exp(-ep*k_min)
+            cycle = 1+ep//(2*stepsize)
+            x = abs(ep/stepsize-2*cycle+1)
+            lr = n_min+(n_max-n_min)*max(0, 1-x)
 
     for param_group in optimizer.param_groups:
         param_group['lr'] = lr
@@ -282,7 +270,7 @@ def cls_train(train_loader, model, criterion, optimizer, epoch, args):
     loss_val, acc1_val = 0, 0
     n = 0
     for i, (images, target) in enumerate(train_loader):
-        if (not args.no_cuda) and torch.cuda.is_available():
+        if torch.cuda.is_available():
             images = images.cuda(args.gpu_id, non_blocking=True)
             target = target.cuda(args.gpu_id, non_blocking=True)
 

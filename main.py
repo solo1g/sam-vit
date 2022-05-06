@@ -121,7 +121,7 @@ def main():
 
     from model2 import CCT
     model = CCT(img_size=img_size, embedding_dim=128, num_layers=2,
-                num_heads=2, mlp_ratio=1, num_classes=10, n_conv_layers=2)
+                num_heads=2, mlp_ratio=1, num_classes=10, n_conv_layers=4)
 
     criterion = LabelSmoothingCrossEntropy()
 
@@ -210,9 +210,16 @@ def main():
 
 
 def adjust_learning_rate(optimizer, epoch, args):
-    for param_group in optimizer.param_groups:
-        param_group['lr'] = 0.0019913 - 0.0000478261*epoch
-    return None
+    # lr = args.lr
+    # if epoch >= 20 and epoch < 30:
+    #     lr = 0.001
+    # elif epoch >= 30 and epoch < 35:
+    #     lr = 0.0006
+    # elif epoch >= 35:
+    #     lr = 0.0003
+    # for param_group in optimizer.param_groups:
+    #     param_group['lr'] = lr
+    # return None
 
     tot_epochs = args.epochs
     LR = args.lr

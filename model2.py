@@ -122,6 +122,8 @@ class Tokenizer(nn.Module):
                  ):    # filter size for in between convolutions
         super(Tokenizer, self).__init__()
 
+        assert(len(in_planes) == n_conv_layers-1)
+
         stride = max(
             1, (kernel_size // 2) - 1)
         padding = max(
@@ -130,9 +132,7 @@ class Tokenizer(nn.Module):
         pooling_stride = 2
         pooling_padding = 1
 
-        n_filter_list = [n_input_channels] + \
-                        [in_planes for _ in range(n_conv_layers - 1)] + \
-                        [n_output_channels]
+        n_filter_list = [n_input_channels]+in_planes+[n_output_channels]
 
         # first layer, middle ones of same n_conv_layers-2 times, last layer
 
@@ -193,7 +193,7 @@ class CCT(nn.Module):
                                    n_output_channels=embedding_dim,
                                    kernel_size=kernel_size,
                                    n_conv_layers=n_conv_layers,
-                                   in_planes=64)
+                                   in_planes=[16, 32, 64])
 
         self.transformer = Transformer(
             embedding_dim=embedding_dim, depth=num_layers,

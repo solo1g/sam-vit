@@ -128,9 +128,9 @@ def main():
     epochs_list = [i+1 for i in range(args.epochs)]
 
     if torch.cuda.is_available():
-        torch.cuda.set_device(args.gpu_id)
-        model.cuda(args.gpu_id)
-        criterion = criterion.cuda(args.gpu_id)
+        torch.cuda.set_device(0)
+        model.cuda(0)
+        criterion = criterion.cuda(0)
 
     # optimizer = torch.optim.AdamW(model.parameters(), lr=args.lr,
     #                               weight_decay=args.weight_decay)
@@ -312,8 +312,8 @@ def cls_validate(val_loader, model, criterion, args, epoch=None, time_begin=None
     with torch.no_grad():
         for i, (images, target) in enumerate(val_loader):
             if (not args.no_cuda) and torch.cuda.is_available():
-                images = images.cuda(args.gpu_id, non_blocking=True)
-                target = target.cuda(args.gpu_id, non_blocking=True)
+                images = images.cuda(0, non_blocking=True)
+                target = target.cuda(0, non_blocking=True)
 
             output = model(images)
             loss = criterion(output, target)

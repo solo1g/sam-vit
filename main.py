@@ -120,8 +120,8 @@ def main():
     img_mean, img_std = DATASETS[args.dataset]['mean'], DATASETS[args.dataset]['std']
 
     from model2 import CCT
-    model = CCT(img_size=img_size, embedding_dim=128, num_layers=2,
-                num_heads=2, mlp_ratio=1, num_classes=10, n_conv_layers=3)
+    model = CCT(img_size=img_size, embedding_dim=256, num_layers=5,
+                num_heads=5, mlp_ratio=1, num_classes=10, n_conv_layers=3)
 
     criterion = LabelSmoothingCrossEntropy()
 
@@ -138,7 +138,7 @@ def main():
     base_optimizer = torch.optim.AdamW
     from sam import SAM
     optimizer = SAM(model.parameters(), base_optimizer,
-                    lr=args.lr, weight_decay=args.weight_decay, adaptive=Ture, rho=0.4)
+                    lr=args.lr, weight_decay=args.weight_decay, adaptive=True, rho=0.4)
 
     scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
         optimizer, T_max=args.epochs, eta_min=0)
@@ -176,6 +176,7 @@ def main():
     print("Beginning training")
     time_begin = time()
     for epoch in range(args.epochs):
+
         # adjust_learning_rate(optimizer, epoch, args)
         cls_train(train_loader, model, criterion, optimizer, epoch, args)
         acc1 = cls_validate(val_loader, model, criterion,

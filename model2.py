@@ -1,3 +1,5 @@
+from torch import einsum
+from einops import rearrange
 import torch
 import torch.nn as nn
 from torch.nn import *
@@ -79,36 +81,86 @@ class DropPath(nn.Module):
         return drop_path(x, self.drop_prob, self.training)
 
 
-class Attention(Module):
-    """
-    Obtained from timm: github.com:rwightman/pytorch-image-models
-    """
+# class Attention(Module):
+#     """
+#     Obtained from timm: github.com:rwightman/pytorch-image-models
+#     """
 
-    def __init__(self, dim, num_heads, attention_dropout=0.1, projection_dropout=0.1):
+#     def __init__(self, dim, num_heads, attention_dropout=0.1, projection_dropout=0.1):
+#         super().__init__()
+#         self.num_heads = num_heads
+#         head_dim = dim // self.num_heads
+#         self.scale = head_dim ** -0.5
+
+#         self.qkv = Linear(dim, dim * 3, bias=False)
+#         self.attn_drop = Dropout(attention_dropout)
+#         self.proj = Linear(dim, dim)
+#         self.proj_drop = Dropout(projection_dropout)
+
+#     def forward(self, x):
+#         B, N, C = x.shape
+#         qkv = self.qkv(x).reshape(B, N, 3, self.num_heads, C //
+#                                   self.num_heads).permute(2, 0, 3, 1, 4)
+#         q, k, v = qkv[0], qkv[1], qkv[2]
+
+#         attn = (q @ k.transpose(-2, -1)) * self.scale
+#         attn = attn.softmax(dim=-1)
+#         attn = self.attn_drop(attn)
+
+#         x = (attn @ v).transpose(1, 2).reshape(B, N, C)
+#         x = self.proj(x)
+#         x = self.proj_drop(x)
+#         return x
+
+
+def exists(val):
+    return val is not None
+
+
+class Attention(nn.Module):
+    def __init__(self, dim, heads, dim_head=64, dropout=0.):
         super().__init__()
-        self.num_heads = num_heads
-        head_dim = dim // self.num_heads
-        self.scale = head_dim ** -0.5
+        inner_dim = dim_head * heads
+        self.heads = heads
+        self.scale = dim_head ** -0.5
 
-        self.qkv = Linear(dim, dim * 3, bias=False)
-        self.attn_drop = Dropout(attention_dropout)
-        self.proj = Linear(dim, dim)
-        self.proj_drop = Dropout(projection_dropout)
+        self.to_q = nn.Linear(dim, inner_dim, bias=False)
+        self.to_kv = nn.Linear(dim, inner_dim * 2, bias=False)
 
-    def forward(self, x):
-        B, N, C = x.shape
-        qkv = self.qkv(x).reshape(B, N, 3, self.num_heads, C //
-                                  self.num_heads).permute(2, 0, 3, 1, 4)
-        q, k, v = qkv[0], qkv[1], qkv[2]
+        self.attend = nn.Softmax(dim=-1)
+        self.dropout = nn.Dropout(dropout)
 
-        attn = (q @ k.transpose(-2, -1)) * self.scale
-        attn = attn.softmax(dim=-1)
-        attn = self.attn_drop(attn)
+        self.mix_heads_pre_attn = nn.Parameter(torch.randn(heads, heads))
+        self.mix_heads_post_attn = nn.Parameter(torch.randn(heads, heads))
 
-        x = (attn @ v).transpose(1, 2).reshape(B, N, C)
-        x = self.proj(x)
-        x = self.proj_drop(x)
-        return x
+        self.to_out = nn.Sequential(
+            nn.Linear(inner_dim, dim),
+            nn.Dropout(dropout)
+        )
+
+    def forward(self, x, context=None):
+        b, n, _, h = *x.shape, self.heads
+
+        context = x if not exists(context) else torch.cat((x, context), dim=1)
+
+        qkv = (self.to_q(x), *self.to_kv(context).chunk(2, dim=-1))
+        q, k, v = map(lambda t: rearrange(t, 'b n (h d) -> b h n d', h=h), qkv)
+
+        dots = einsum('b h i d, b h j d -> b h i j', q, k) * self.scale
+
+        # talking heads, pre-softmax
+        dots = einsum('b h i j, h g -> b g i j', dots, self.mix_heads_pre_attn)
+
+        attn = self.attend(dots)
+        attn = self.dropout(attn)
+
+        # talking heads, post-softmax
+        attn = einsum('b h i j, h g -> b g i j',
+                      attn, self.mix_heads_post_attn)
+
+        out = einsum('b h i j, b h j d -> b h i d', attn, v)
+        out = rearrange(out, 'b h n d -> b n (h d)')
+        return self.to_out(out)
 
 
 class Transformer(nn.Module):
@@ -123,7 +175,7 @@ class Transformer(nn.Module):
         for i in range(depth):
             self.layers.append(nn.ModuleList([
                 PreNormWithDropPath(embedding_dim, Attention(
-                    dim=embedding_dim, num_heads=heads), drop_path_rate=dpr[i]),
+                    dim=embedding_dim, heads=heads), drop_path_rate=dpr[i]),
                 PreNormWithDropPath(embedding_dim, FeedForward(
                     dim=embedding_dim, hidden_dim=mlp_dim, dropout=dropout), drop_path_rate=dpr[i])
             ]))
@@ -216,7 +268,7 @@ class CCT(nn.Module):
                                    n_output_channels=embedding_dim,
                                    kernel_size=kernel_size,
                                    n_conv_layers=n_conv_layers,
-                                   in_planes=[64, 96])
+                                   in_planes=[64, 128])
 
         self.transformer = Transformer(
             embedding_dim=embedding_dim, depth=num_layers,

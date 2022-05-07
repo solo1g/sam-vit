@@ -138,7 +138,7 @@ def main():
     base_optimizer = torch.optim.AdamW
     from sam import SAM
     optimizer = SAM(model.parameters(), base_optimizer,
-                    lr=args.lr, weight_decay=args.weight_decay)
+                    lr=args.lr, weight_decay=args.weight_decay, adaptive=Ture, rho=0.4)
 
     scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
         optimizer, T_max=args.epochs, eta_min=0)

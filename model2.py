@@ -44,7 +44,6 @@ class FeedForward(nn.Module):
     def __init__(self, dim, hidden_dim, dropout):
         super().__init__()
         self.net = nn.Sequential(
-            nn.Linear(dim, hidden_dim),
             GLU(dim, hidden_dim, nn.SiLU()),
             nn.Dropout(dropout),
             nn.Linear(hidden_dim, dim),
@@ -81,36 +80,36 @@ class DropPath(nn.Module):
         return drop_path(x, self.drop_prob, self.training)
 
 
-# class Attention(Module):
-#     """
-#     Obtained from timm: github.com:rwightman/pytorch-image-models
-#     """
+class Attention(Module):
+    """
+    Obtained from timm: github.com:rwightman/pytorch-image-models
+    """
 
-#     def __init__(self, dim, num_heads, attention_dropout=0.1, projection_dropout=0.1):
-#         super().__init__()
-#         self.num_heads = num_heads
-#         head_dim = dim // self.num_heads
-#         self.scale = head_dim ** -0.5
+    def __init__(self, dim, num_heads, attention_dropout=0.1, projection_dropout=0.1):
+        super().__init__()
+        self.num_heads = num_heads
+        head_dim = dim // self.num_heads
+        self.scale = head_dim ** -0.5
 
-#         self.qkv = Linear(dim, dim * 3, bias=False)
-#         self.attn_drop = Dropout(attention_dropout)
-#         self.proj = Linear(dim, dim)
-#         self.proj_drop = Dropout(projection_dropout)
+        self.qkv = Linear(dim, dim * 3, bias=False)
+        self.attn_drop = Dropout(attention_dropout)
+        self.proj = Linear(dim, dim)
+        self.proj_drop = Dropout(projection_dropout)
 
-#     def forward(self, x):
-#         B, N, C = x.shape
-#         qkv = self.qkv(x).reshape(B, N, 3, self.num_heads, C //
-#                                   self.num_heads).permute(2, 0, 3, 1, 4)
-#         q, k, v = qkv[0], qkv[1], qkv[2]
+    def forward(self, x):
+        B, N, C = x.shape
+        qkv = self.qkv(x).reshape(B, N, 3, self.num_heads, C //
+                                  self.num_heads).permute(2, 0, 3, 1, 4)
+        q, k, v = qkv[0], qkv[1], qkv[2]
 
-#         attn = (q @ k.transpose(-2, -1)) * self.scale
-#         attn = attn.softmax(dim=-1)
-#         attn = self.attn_drop(attn)
+        attn = (q @ k.transpose(-2, -1)) * self.scale
+        attn = attn.softmax(dim=-1)
+        attn = self.attn_drop(attn)
 
-#         x = (attn @ v).transpose(1, 2).reshape(B, N, C)
-#         x = self.proj(x)
-#         x = self.proj_drop(x)
-#         return x
+        x = (attn @ v).transpose(1, 2).reshape(B, N, C)
+        x = self.proj(x)
+        x = self.proj_drop(x)
+        return x
 
 
 # def exists(val):
@@ -162,41 +161,41 @@ class DropPath(nn.Module):
 #         out = rearrange(out, 'b h n d -> b n (h d)')
 #         return self.to_out(out)
 
-class Attention(nn.Module):
-    def __init__(self, dim, heads, dim_head=64, dropout=0.):
-        super().__init__()
-        inner_dim = dim_head * heads
-        self.heads = heads
-        self.temperature = nn.Parameter(
-            torch.log(torch.tensor(dim_head ** -0.5)))
+# class Attention(nn.Module):
+#     def __init__(self, dim, heads, dim_head=64, dropout=0.):
+#         super().__init__()
+#         inner_dim = dim_head * heads
+#         self.heads = heads
+#         self.temperature = nn.Parameter(
+#             torch.log(torch.tensor(dim_head ** -0.5)))
 
-        self.attend = nn.Softmax(dim=-1)
-        self.dropout = nn.Dropout(dropout)
+#         self.attend = nn.Softmax(dim=-1)
+#         self.dropout = nn.Dropout(dropout)
 
-        self.to_qkv = nn.Linear(dim, inner_dim * 3, bias=False)
+#         self.to_qkv = nn.Linear(dim, inner_dim * 3, bias=False)
 
-        self.to_out = nn.Sequential(
-            nn.Linear(inner_dim, dim),
-            nn.Dropout(dropout)
-        )
+#         self.to_out = nn.Sequential(
+#             nn.Linear(inner_dim, dim),
+#             nn.Dropout(dropout)
+#         )
 
-    def forward(self, x):
-        qkv = self.to_qkv(x).chunk(3, dim=-1)
-        q, k, v = map(lambda t: rearrange(
-            t, 'b n (h d) -> b h n d', h=self.heads), qkv)
+#     def forward(self, x):
+#         qkv = self.to_qkv(x).chunk(3, dim=-1)
+#         q, k, v = map(lambda t: rearrange(
+#             t, 'b n (h d) -> b h n d', h=self.heads), qkv)
 
-        dots = torch.matmul(q, k.transpose(-1, -2)) * self.temperature.exp()
+#         dots = torch.matmul(q, k.transpose(-1, -2)) * self.temperature.exp()
 
-        mask = torch.eye(dots.shape[-1], device=dots.device, dtype=torch.bool)
-        mask_value = -torch.finfo(dots.dtype).max
-        dots = dots.masked_fill(mask, mask_value)
+#         mask = torch.eye(dots.shape[-1], device=dots.device, dtype=torch.bool)
+#         mask_value = -torch.finfo(dots.dtype).max
+#         dots = dots.masked_fill(mask, mask_value)
 
-        attn = self.attend(dots)
-        attn = self.dropout(attn)
+#         attn = self.attend(dots)
+#         attn = self.dropout(attn)
 
-        out = torch.matmul(attn, v)
-        out = rearrange(out, 'b h n d -> b n (h d)')
-        return self.to_out(out)
+#         out = torch.matmul(attn, v)
+#         out = rearrange(out, 'b h n d -> b n (h d)')
+#         return self.to_out(out)
 
 
 class Transformer(nn.Module):
@@ -211,7 +210,7 @@ class Transformer(nn.Module):
         for i in range(depth):
             self.layers.append(nn.ModuleList([
                 PreNormWithDropPath(embedding_dim, Attention(
-                    dim=embedding_dim, heads=heads), drop_path_rate=dpr[i]),
+                    dim=embedding_dim, num_heads=heads), drop_path_rate=dpr[i]),
                 PreNormWithDropPath(embedding_dim, FeedForward(
                     dim=embedding_dim, hidden_dim=mlp_dim, dropout=dropout), drop_path_rate=dpr[i])
             ]))
@@ -304,7 +303,7 @@ class CCT(nn.Module):
                                    n_output_channels=embedding_dim,
                                    kernel_size=kernel_size,
                                    n_conv_layers=n_conv_layers,
-                                   in_planes=[64, 128])
+                                   in_planes=[])
 
         self.transformer = Transformer(
             embedding_dim=embedding_dim, depth=num_layers,

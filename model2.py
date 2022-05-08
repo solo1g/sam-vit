@@ -113,52 +113,88 @@ class DropPath(nn.Module):
 #         return x
 
 
-def exists(val):
-    return val is not None
+# def exists(val):
+#     return val is not None
 
+
+# class Attention(nn.Module):
+#     def __init__(self, dim, heads, dim_head=64, dropout=0.):
+#         super().__init__()
+#         inner_dim = dim_head * heads
+#         self.heads = heads
+#         self.scale = dim_head ** -0.5
+
+#         self.to_q = nn.Linear(dim, inner_dim, bias=False)
+#         self.to_kv = nn.Linear(dim, inner_dim * 2, bias=False)
+
+#         self.attend = nn.Softmax(dim=-1)
+#         self.dropout = nn.Dropout(dropout)
+
+#         self.mix_heads_pre_attn = nn.Parameter(torch.randn(heads, heads))
+#         self.mix_heads_post_attn = nn.Parameter(torch.randn(heads, heads))
+
+#         self.to_out = nn.Sequential(
+#             nn.Linear(inner_dim, dim),
+#             nn.Dropout(dropout)
+#         )
+
+#     def forward(self, x, context=None):
+#         b, n, _, h = *x.shape, self.heads
+
+#         context = x if not exists(context) else torch.cat((x, context), dim=1)
+
+#         qkv = (self.to_q(x), *self.to_kv(context).chunk(2, dim=-1))
+#         q, k, v = map(lambda t: rearrange(t, 'b n (h d) -> b h n d', h=h), qkv)
+
+#         dots = einsum('b h i d, b h j d -> b h i j', q, k) * self.scale
+
+#         # talking heads, pre-softmax
+#         dots = einsum('b h i j, h g -> b g i j', dots, self.mix_heads_pre_attn)
+
+#         attn = self.attend(dots)
+#         attn = self.dropout(attn)
+
+#         # talking heads, post-softmax
+#         attn = einsum('b h i j, h g -> b g i j',
+#                       attn, self.mix_heads_post_attn)
+
+#         out = einsum('b h i j, b h j d -> b h i d', attn, v)
+#         out = rearrange(out, 'b h n d -> b n (h d)')
+#         return self.to_out(out)
 
 class Attention(nn.Module):
     def __init__(self, dim, heads, dim_head=64, dropout=0.):
         super().__init__()
         inner_dim = dim_head * heads
         self.heads = heads
-        self.scale = dim_head ** -0.5
-
-        self.to_q = nn.Linear(dim, inner_dim, bias=False)
-        self.to_kv = nn.Linear(dim, inner_dim * 2, bias=False)
+        self.temperature = nn.Parameter(
+            torch.log(torch.tensor(dim_head ** -0.5)))
 
         self.attend = nn.Softmax(dim=-1)
         self.dropout = nn.Dropout(dropout)
 
-        self.mix_heads_pre_attn = nn.Parameter(torch.randn(heads, heads))
-        self.mix_heads_post_attn = nn.Parameter(torch.randn(heads, heads))
+        self.to_qkv = nn.Linear(dim, inner_dim * 3, bias=False)
 
         self.to_out = nn.Sequential(
             nn.Linear(inner_dim, dim),
             nn.Dropout(dropout)
         )
 
-    def forward(self, x, context=None):
-        b, n, _, h = *x.shape, self.heads
+    def forward(self, x):
+        qkv = self.to_qkv(x).chunk(3, dim=-1)
+        q, k, v = map(lambda t: rearrange(
+            t, 'b n (h d) -> b h n d', h=self.heads), qkv)
 
-        context = x if not exists(context) else torch.cat((x, context), dim=1)
+        dots = torch.matmul(q, k.transpose(-1, -2)) * self.temperature.exp()
 
-        qkv = (self.to_q(x), *self.to_kv(context).chunk(2, dim=-1))
-        q, k, v = map(lambda t: rearrange(t, 'b n (h d) -> b h n d', h=h), qkv)
-
-        dots = einsum('b h i d, b h j d -> b h i j', q, k) * self.scale
-
-        # talking heads, pre-softmax
-        dots = einsum('b h i j, h g -> b g i j', dots, self.mix_heads_pre_attn)
+        mask = torch.eye(dots.shape[-1], device=dots.device, dtype=torch.bool)
+        mask_value = -torch.finfo(dots.dtype).max
+        dots = dots.masked_fill(mask, mask_value)
 
         attn = self.attend(dots)
         attn = self.dropout(attn)
 
-        # talking heads, post-softmax
-        attn = einsum('b h i j, h g -> b g i j',
-                      attn, self.mix_heads_post_attn)
-
-        out = einsum('b h i j, b h j d -> b h i d', attn, v)
+        out = torch.matmul(attn, v)
         out = rearrange(out, 'b h n d -> b n (h d)')
         return self.to_out(out)
 

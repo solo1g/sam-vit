@@ -79,7 +79,7 @@ def init_parser():
     parser.add_argument('--dataset',
                         type=str.lower,
                         choices=['cifar10', 'cifar100'],
-                        default='cifar100')
+                        default='cifar10')
 
     parser.add_argument('-j', '--workers', default=4, type=int, metavar='N',
                         help='number of data loading workers (default: 4)')

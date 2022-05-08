@@ -111,7 +111,6 @@ class Attention(Module):
         x = self.proj_drop(x)
         return x
 
-
 # def exists(val):
 #     return val is not None
 
@@ -224,16 +223,13 @@ class Transformer(nn.Module):
 
 class Tokenizer(nn.Module):
     def __init__(self,
-                 kernel_size,
-                 n_conv_layers,
                  n_input_channels,
                  n_output_channels,
-                 in_planes,
                  ):    # filter size for in between convolutions
         super(Tokenizer, self).__init__()
 
-        assert(len(in_planes) == n_conv_layers-1)
-
+        n_conv_layers = 2
+        kernel_size = 3
         stride = max(
             1, (kernel_size // 2) - 1)
         padding = max(
@@ -242,25 +238,32 @@ class Tokenizer(nn.Module):
         pooling_stride = 2
         pooling_padding = 1
 
-        n_filter_list = [n_input_channels]+in_planes+[n_output_channels]
+        n_filter_list = [n_input_channels]+[64]+[n_output_channels]
 
         # first layer, middle ones of same n_conv_layers-2 times, last layer
 
         self.conv_layers = nn.Sequential(
-            *[nn.Sequential(
-                nn.Conv2d(n_filter_list[i], n_filter_list[i + 1],
-                          kernel_size=(kernel_size, kernel_size),
-                          stride=(stride, stride),
-                          padding=(padding, padding),
-                          bias=False    # add a learnable bias param
-                          ),
-                nn.ReLU(),  # activation
-                nn.MaxPool2d(kernel_size=pooling_kernel_size,
-                             stride=pooling_stride,
-                             padding=pooling_padding)
-            )
-                for i in range(n_conv_layers)
-            ])
+            nn.Conv2d(n_filter_list[0], n_filter_list[1],
+                      kernel_size=(3, 3),
+                      stride=(stride, stride),
+                      padding=(padding, padding),
+                      bias=False
+                      ),
+            nn.ReLU(),  # activation
+            nn.MaxPool2d(kernel_size=pooling_kernel_size,
+                         stride=pooling_stride,
+                         padding=pooling_padding),
+            nn.Conv2d(n_filter_list[1], n_filter_list[2],
+                      kernel_size=(1, 1),
+                      stride=(stride, stride),
+                      padding=(padding, padding),
+                      bias=False
+                      ),
+            nn.ReLU(),  # activation
+            nn.MaxPool2d(kernel_size=pooling_kernel_size,
+                         stride=pooling_stride,
+                         padding=pooling_padding)
+        )
 
         self.flattener = nn.Flatten(2, 3)
         self.apply(self.init_weight)
@@ -292,18 +295,13 @@ class CCT(nn.Module):
                  num_heads,
                  mlp_ratio,
                  num_classes,
-                 n_conv_layers,   # conv layer for tokeniser
                  n_input_channels=3,    # 3 for images
-                 kernel_size=3,     # remaining values should suit most
                  dropout=0.1,
                  *args, **kwargs):
         super(CCT, self).__init__()
 
         self.tokenizer = Tokenizer(n_input_channels=n_input_channels,
-                                   n_output_channels=embedding_dim,
-                                   kernel_size=kernel_size,
-                                   n_conv_layers=n_conv_layers,
-                                   in_planes=[])
+                                   n_output_channels=embedding_dim)
 
         self.transformer = Transformer(
             embedding_dim=embedding_dim, depth=num_layers,

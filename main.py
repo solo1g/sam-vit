@@ -79,7 +79,7 @@ def init_parser():
     parser.add_argument('--dataset',
                         type=str.lower,
                         choices=['cifar10', 'cifar100'],
-                        default='cifar10')
+                        default='cifar100')
 
     parser.add_argument('-j', '--workers', default=4, type=int, metavar='N',
                         help='number of data loading workers (default: 4)')
@@ -103,7 +103,7 @@ def init_parser():
     parser.add_argument('--lr', default=0.002, type=float,
                         # changing lr to 0.0005 to 0.1 for SAM
                         help='initial learning rate')
-    parser.add_argument('--weight-decay', default=0.3, type=float,
+    parser.add_argument('--weight-decay', default=1e-4, type=float,
                         help='weight decay (default: 1e-4)')
 
     return parser
@@ -120,8 +120,8 @@ def main():
     img_mean, img_std = DATASETS[args.dataset]['mean'], DATASETS[args.dataset]['std']
 
     from model2 import CCT
-    model = CCT(img_size=img_size, embedding_dim=256, num_layers=7,
-                num_heads=4, mlp_ratio=2, num_classes=10)
+    model = CCT(img_size=img_size, embedding_dim=256, num_layers=32,
+                num_heads=4, mlp_ratio=2, num_classes=num_classes)
 
     criterion = LabelSmoothingCrossEntropy()
 

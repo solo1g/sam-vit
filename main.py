@@ -181,6 +181,13 @@ def main():
         num_workers=args.workers)
 
     print("Beginning training")
+    print("Epochs: ", args.epochs)
+    print("LR: ", args.lr)
+    print("Layers: ", args.layers)
+    print("Embedding dim: ", args.dim)
+    print("Heads: ", args.heads)
+    print("MLP: ", args.mlp)
+    print("Dataset: ", args.dataset)
     time_begin = time()
     for epoch in range(args.epochs):
 

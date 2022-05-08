@@ -100,11 +100,18 @@ def init_parser():
     parser.add_argument('-b', '--batch-size', default=128, type=int,
                         metavar='N',
                         help='mini-batch size (default: 128)', dest='batch_size')
-    parser.add_argument('--lr', default=0.002, type=float,
-                        # changing lr to 0.0005 to 0.1 for SAM
+    parser.add_argument('--lr', default=3e-4, type=float,
                         help='initial learning rate')
-    parser.add_argument('--weight-decay', default=0.3, type=float,
+    parser.add_argument('--weight-decay', default=1e-4, type=float,
                         help='weight decay (default: 1e-4)')
+    parser.add_argument('--layers', default=7, type=int,
+                        help='layers (default 7)')
+    parser.add_argument('--dim', default=256, type=int,
+                        help='embedding dim (default 256)')
+    parser.add_argument('--heads', default=4, type=int,
+                        help='heads num (4)')
+    parser.add_argument('--mlp', default=2, type=float,
+                        help='mlp ratio (2)')
 
     return parser
 
@@ -120,8 +127,8 @@ def main():
     img_mean, img_std = DATASETS[args.dataset]['mean'], DATASETS[args.dataset]['std']
 
     from model2 import CCT
-    model = CCT(img_size=img_size, embedding_dim=256, num_layers=7,
-                num_heads=4, mlp_ratio=2, num_classes=10)
+    model = CCT(img_size=img_size, embedding_dim=args.dim, num_layers=args.layers,
+                num_heads=args.heads, mlp_ratio=args.mlp, num_classes=num_classes)
 
     criterion = LabelSmoothingCrossEntropy()
 

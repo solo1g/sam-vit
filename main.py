@@ -119,7 +119,7 @@ def main():
     img_mean, img_std = DATASETS[args.dataset]['mean'], DATASETS[args.dataset]['std']
 
     from model2 import CCT
-    model = CCT(img_size=img_size, embedding_dim=256, num_layers=7,
+    model = CCT(img_size=img_size, embedding_dim=256, num_layers=10,
                 num_heads=4, mlp_ratio=2, num_classes=num_classes)
 
     criterion = LabelSmoothingCrossEntropy()

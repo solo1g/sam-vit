@@ -225,10 +225,10 @@ class Transformer(nn.Module):
 
         for i in range(depth):
             self.layers.append(nn.ModuleList([
-                LayerScale(PreNormWithDropPath(embedding_dim, Attention(
-                    dim=embedding_dim, num_heads=heads), drop_path_rate=dpr[i]), depth=i+1),
-                LayerScale(PreNormWithDropPath(embedding_dim, FeedForward(
-                    dim=embedding_dim, hidden_dim=mlp_dim, dropout=dropout), drop_path_rate=dpr[i]), depth=i+1)
+                PreNormWithDropPath(embedding_dim, Attention(
+                    dim=embedding_dim, num_heads=heads), drop_path_rate=dpr[i]),
+                PreNormWithDropPath(embedding_dim, FeedForward(
+                    dim=embedding_dim, hidden_dim=mlp_dim, dropout=dropout), drop_path_rate=dpr[i])
             ]))
 
     def forward(self, x):
@@ -245,7 +245,7 @@ class Tokenizer(nn.Module):
                  ):    # filter size for in between convolutions
         super(Tokenizer, self).__init__()
 
-        n_conv_layers = 2
+        n_conv_layers = 1
         kernel_size = 3
         stride = max(
             1, (kernel_size // 2) - 1)
@@ -255,7 +255,7 @@ class Tokenizer(nn.Module):
         pooling_stride = 2
         pooling_padding = 1
 
-        n_filter_list = [n_input_channels]+[64]+[n_output_channels]
+        n_filter_list = [n_input_channels]+[n_output_channels]
 
         # first layer, middle ones of same n_conv_layers-2 times, last layer
 
@@ -270,16 +270,6 @@ class Tokenizer(nn.Module):
             nn.MaxPool2d(kernel_size=pooling_kernel_size,
                          stride=pooling_stride,
                          padding=pooling_padding),
-            nn.Conv2d(n_filter_list[1], n_filter_list[2],
-                      kernel_size=(1, 1),
-                      stride=(stride, stride),
-                      padding=(padding, padding),
-                      bias=False
-                      ),
-            nn.ReLU(),  # activation
-            nn.MaxPool2d(kernel_size=pooling_kernel_size,
-                         stride=pooling_stride,
-                         padding=pooling_padding)
         )
 
         self.flattener = nn.Flatten(2, 3)
@@ -313,7 +303,7 @@ class CCT(nn.Module):
                  mlp_ratio,
                  num_classes,
                  n_input_channels=3,    # 3 for images
-                 dropout=0.1,
+                 dropout=0.,
                  *args, **kwargs):
         super(CCT, self).__init__()
 

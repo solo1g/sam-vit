@@ -100,10 +100,9 @@ def init_parser():
     parser.add_argument('-b', '--batch-size', default=128, type=int,
                         metavar='N',
                         help='mini-batch size (default: 128)', dest='batch_size')
-    parser.add_argument('--lr', default=0.002, type=float,
-                        # changing lr to 0.0005 to 0.1 for SAM
+    parser.add_argument('--lr', default=0.0005, type=float,
                         help='initial learning rate')
-    parser.add_argument('--weight-decay', default=1e-4, type=float,
+    parser.add_argument('--weight-decay', default=3e-2, type=float,
                         help='weight decay (default: 1e-4)')
 
     return parser
@@ -120,7 +119,7 @@ def main():
     img_mean, img_std = DATASETS[args.dataset]['mean'], DATASETS[args.dataset]['std']
 
     from model2 import CCT
-    model = CCT(img_size=img_size, embedding_dim=256, num_layers=32,
+    model = CCT(img_size=img_size, embedding_dim=256, num_layers=7,
                 num_heads=4, mlp_ratio=2, num_classes=num_classes)
 
     criterion = LabelSmoothingCrossEntropy()
@@ -132,13 +131,10 @@ def main():
         model.cuda(0)
         criterion = criterion.cuda(0)
 
-    optimizer = torch.optim.AdamW(model.parameters(), lr=args.lr,
-                                  weight_decay=args.weight_decay)
-
     base_optimizer = torch.optim.AdamW
     from sam import SAM
     optimizer = SAM(model.parameters(), base_optimizer,
-                    lr=args.lr, weight_decay=args.weight_decay, adaptive=True, rho=0.4)
+                    lr=args.lr, weight_decay=args.weight_decay)
 
     scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
         optimizer, T_max=args.epochs, eta_min=0)

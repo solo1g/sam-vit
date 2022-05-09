@@ -160,3 +160,4 @@ cython_debug/
 #.idea/
 
 cifar-10-dataset/*
+cifar-100-dataset/*

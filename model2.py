@@ -225,10 +225,10 @@ class Transformer(nn.Module):
 
         for i in range(depth):
             self.layers.append(nn.ModuleList([
-                PreNormWithDropPath(embedding_dim, Attention(
-                    dim=embedding_dim, num_heads=heads), drop_path_rate=dpr[i]),
-                PreNormWithDropPath(embedding_dim, FeedForward(
-                    dim=embedding_dim, hidden_dim=mlp_dim, dropout=dropout), drop_path_rate=dpr[i])
+                LayerScale(PreNormWithDropPath(embedding_dim, Attention(
+                    dim=embedding_dim, num_heads=heads), drop_path_rate=dpr[i]), depth=i+1),
+                LayerScale(PreNormWithDropPath(embedding_dim, FeedForward(
+                    dim=embedding_dim, hidden_dim=mlp_dim, dropout=dropout), drop_path_rate=dpr[i]), depth=i+1)
             ]))
 
     def forward(self, x):

@@ -6,18 +6,6 @@ from torch.nn import *
 import torch.nn.functional as F
 
 
-class RMSNorm(nn.Module):
-    def __init__(self, dim, eps=1e-8):
-        super().__init__()
-        self.scale = dim ** -0.5
-        self.eps = eps
-        self.g = nn.Parameter(torch.ones(dim))
-
-    def forward(self, x):
-        norm = torch.norm(x, dim=-1, keepdim=True) * self.scale
-        return x / norm.clamp(min=self.eps) * self.g
-
-
 class GLU(nn.Module):
     def __init__(self, dim_in, dim_out, activation):
         super().__init__()
@@ -32,7 +20,7 @@ class GLU(nn.Module):
 class PreNormWithDropPath(nn.Module):
     def __init__(self, dim, fn, drop_path_rate):
         super().__init__()
-        self.norm = RMSNorm(dim)
+        self.norm = LayerNorm(dim)
         self.fn = fn
         self.drop_path = DropPath(drop_path_rate)
 
@@ -225,10 +213,10 @@ class Transformer(nn.Module):
 
         for i in range(depth):
             self.layers.append(nn.ModuleList([
-                LayerScale(PreNormWithDropPath(embedding_dim, Attention(
-                    dim=embedding_dim, num_heads=heads), drop_path_rate=dpr[i]), depth=i+1),
-                LayerScale(PreNormWithDropPath(embedding_dim, FeedForward(
-                    dim=embedding_dim, hidden_dim=mlp_dim, dropout=dropout), drop_path_rate=dpr[i]), depth=i+1)
+                PreNormWithDropPath(embedding_dim, Attention(
+                    dim=embedding_dim, num_heads=heads), drop_path_rate=dpr[i]),
+                PreNormWithDropPath(embedding_dim, FeedForward(
+                    dim=embedding_dim, hidden_dim=mlp_dim, dropout=dropout), drop_path_rate=dpr[i])
             ]))
 
     def forward(self, x):
@@ -326,11 +314,11 @@ class CCT(nn.Module):
         self.dropout = Dropout(p=dropout)
 
         # self.mlp_head = nn.Sequential(
-        #     RMSNorm(dim),
+        #     LayerNorm(dim),
         #     nn.Linear(dim, num_classes)
         # )
         # these two below are for same task commented above
-        self.norm = RMSNorm(embedding_dim)
+        self.norm = LayerNorm(embedding_dim)
         self.fc = Linear(embedding_dim, num_classes)
 
         self.attention_pool = Linear(embedding_dim, 1)

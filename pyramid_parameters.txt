@@ -1,8 +1,0 @@
- level: 3 heads: 3 dim in: 192 dim out: 192 block repeat: 2 seq len: 1024
- level: 2 heads: 3 dim in: 192 dim out: 192 block repeat: 4 seq len: 256
- level: 1 heads: 3 dim in: 192 dim out: 192 block repeat: 4 seq len: 64
- level: 0 heads: 3 dim in: 192 dim out: 192 block repeat: 4 seq len: 16
- level: 3 heads: 3 dim in: 192 dim out: 192 block repeat: 2 seq len: 1024
- level: 2 heads: 3 dim in: 192 dim out: 192 block repeat: 4 seq len: 256
- level: 1 heads: 3 dim in: 192 dim out: 192 block repeat: 4 seq len: 64
- level: 0 heads: 3 dim in: 192 dim out: 192 block repeat: 4 seq len: 16

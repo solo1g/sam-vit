@@ -12,6 +12,7 @@ import torchvision.datasets as datasets
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from model3 import shifts
 
 from helpers import *
 
@@ -97,7 +98,7 @@ def init_parser():
                         help='number of total epochs to run')
     parser.add_argument('--warmup', default=5, type=int, metavar='N',
                         help='number of warmup epochs')
-    parser.add_argument('-b', '--batch-size', default=128, type=int,
+    parser.add_argument('-b', '--batch-size', default=40, type=int,
                         metavar='N',
                         help='mini-batch size (default: 128)', dest='batch_size')
     parser.add_argument('--lr', default=3e-4, type=float,
@@ -126,20 +127,16 @@ def main():
     num_classes = DATASETS[args.dataset]['num_classes']
     img_mean, img_std = DATASETS[args.dataset]['mean'], DATASETS[args.dataset]['std']
 
-    from model3 import ShiftingTransformer
-    model = ShiftingTransformer(
-        scaling_factor=4,
-        output_dir='/Users/one/work/Locally-SAG-Transformer/sam-vit',
-        num_variants=18,
+    from model3 import TransformerMain
+    model = TransformerMain(
+        num_variants=shifts,
         image_size=32,
         patch_size=1,
         embedding_dim=((192, 192), (192, 192), (192, 192), (192, 192)),
         heads=3,
-        num_hierarchies=4,  # number of hierarchies
-        # the number of transformer blocks at each heirarchy, starting from the bottom
+        blocks=4,
         num_layers_per_block=(2, 4, 4, 4),
         num_classes=10,
-        init_patch_embed_size=1,
         kernel_size=3,
         stride_size=1,
         padding_size=1
@@ -195,14 +192,6 @@ def main():
         batch_size=args.batch_size, shuffle=False,
         num_workers=args.workers)
 
-    print("Beginning training")
-    print("Epochs: ", args.epochs)
-    print("LR: ", args.lr)
-    print("Layers: ", args.layers)
-    print("Embedding dim: ", args.dim)
-    print("Heads: ", args.heads)
-    print("MLP: ", args.mlp)
-    print("Dataset: ", args.dataset)
     time_begin = time()
     for epoch in range(args.epochs):
 
@@ -325,10 +314,6 @@ def cls_train(train_loader, model, criterion, optimizer, epoch, args):
         loss.backward()
         optimizer.step(closure)
         optimizer.zero_grad()
-
-        # if args.clip_grad_norm > 0:
-        #     nn.utils.clip_grad_norm_(
-        #         model.parameters(), max_norm=args.clip_grad_norm, norm_type=2)
 
         if args.print_freq >= 0 and i % args.print_freq == 0:
             avg_loss, avg_acc1 = (loss_val / n), (acc1_val / n)

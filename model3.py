@@ -14,8 +14,8 @@ import linmutli as lm
 from helpers import *
 from perf import *
 
-half_dist = 3
-shifts = 49
+half_dist = 2
+shifts = 18
 
 
 def cast_tuple(val, depth):
@@ -95,7 +95,7 @@ class Attention(nn.Module):
 
     def forward(self, x, num_layer):
         B, N, C = x.shape
-        print("A", x.shape)
+        # print("A", x.shape)
         # torch.Size([batch, #heads, #patches, embedding])
         q = self.Wq(x).reshape(B, N, self.num_heads, C //
                                self.num_heads).permute(0, 2, 1, 3)
@@ -222,9 +222,9 @@ class AttentionModified(nn.Module):
         attn = self.attn_drop(attn)
         x = (attn @ v).squeeze()
         x = x.transpose(1, 2).reshape(B, N, C)
-        print(x.shape)
+        # print(x.shape)
         x = self.proj(x)
-        print(x.shape)
+        # print(x.shape)
         x = self.proj_drop(x)
 
         return x
@@ -348,7 +348,7 @@ class Transformer(nn.Module):
         x = x + pos_emb
         num_layer = 0
         for attn, mlp in self.layers:
-            print("TEST", x.shape)
+            # print("TEST", x.shape)
             x = x + self.drop_path(attn(self.norm1(x)))
             x = x + self.drop_path(mlp(self.norm2(x)))
             num_layer += 1
@@ -401,11 +401,15 @@ class PatchEmbed(nn.Module):
 
         paddings = []
 
-        for i in range(-half_dist, half_dist+1):
-            for j in range(-half_dist, half_dist+1):
-                if i == 0 and j == 0:
-                    continue
-                paddings.append((i, j))
+        # for i in range(-half_dist, half_dist+1):
+        #     for j in range(-half_dist, half_dist+1):
+        #         if i == 0 and j == 0:
+        #             continue
+        #         paddings.append((i, j))
+
+        paddings = [(1, 0), (0, 1), (-1, 0), (0, -1), (2, 0), (0, 2), (-2, 0), (0, -2),
+                    (1, 1), (1, 2), (1, -1), (-1, 1), (-1, 2), (-1, -1), (2, 1),
+                    (2, 2), (2, -1)]
 
         for i in range(len(paddings)):
             cur_padding = paddings[i]
@@ -487,9 +491,9 @@ class TransformerMain(nn.Module):
         # print("x after embedding: ", patches.shape)
         num_hierarchies = len(self.layers)
         for level, (transformer, reduce_image_size) in zip(reversed(range(num_hierarchies)), self.layers):
-            print("T", patches.shape)
+            # print("T", patches.shape)
             patches = transformer(patches)
-            print("T", patches.shape)
+            # print("T", patches.shape)
             # T1: mean across all shifts
 
             if level > 0:
@@ -498,7 +502,7 @@ class TransformerMain(nn.Module):
                 patches = to_image_plane(patches, grid_size, self.patch_size)
                 patches = reduce_image_size(patches)
                 patches = to_patches_plane(patches, self.patch_size)
-        print("T", patches.shape)
+        # print("T", patches.shape)
         patches = self.norm(patches)
         patches_pool = torch.mean(patches, dim=(1))
         return self.mlp_head(patches_pool)

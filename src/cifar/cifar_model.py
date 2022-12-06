@@ -11,8 +11,11 @@ import warnings
 from torch.nn.init import _calculate_fan_in_and_fan_out
 import torch.nn.functional as F
 
+from perf import PerformerSelfAttention
+
 # helpers
 NUM_VARIANTS = 18
+
 
 def cast_tuple(val, depth):
     return val if isinstance(val, tuple) else ((val,) * depth)
@@ -20,6 +23,7 @@ def cast_tuple(val, depth):
 # LayerNorm = partial(nn.InstanceNorm2d, affine = True)
 
 # classes
+
 
 def drop_path(x, drop_prob: float = 0., training: bool = False):
     """Drop paths (Stochastic Depth) per sample (when applied in main path of residual blocks).
@@ -34,8 +38,10 @@ def drop_path(x, drop_prob: float = 0., training: bool = False):
     if drop_prob == 0. or not training:
         return x
     keep_prob = 1 - drop_prob
-    shape = (x.shape[0],) + (1,) * (x.ndim - 1)  # work with diff dim tensors, not just 2D ConvNets
-    random_tensor = keep_prob + torch.rand(shape, dtype=x.dtype, device=x.device)
+    # work with diff dim tensors, not just 2D ConvNets
+    shape = (x.shape[0],) + (1,) * (x.ndim - 1)
+    random_tensor = keep_prob + \
+        torch.rand(shape, dtype=x.dtype, device=x.device)
     random_tensor.floor_()  # binarize
     output = x.div(keep_prob) * random_tensor
     return output
@@ -44,13 +50,13 @@ def drop_path(x, drop_prob: float = 0., training: bool = False):
 class DropPath(nn.Module):
     """Drop paths (Stochastic Depth) per sample  (when applied in main path of residual blocks).
     """
+
     def __init__(self, drop_prob=None):
         super(DropPath, self).__init__()
         self.drop_prob = drop_prob
 
     def forward(self, x):
         return drop_path(x, self.drop_prob, self.training)
-
 
 
 def _no_grad_trunc_normal_(tensor, mean, std, a, b):
@@ -137,14 +143,10 @@ def lecun_normal_(tensor):
     variance_scaling_(tensor, mode='fan_in', distribution='truncated_normal')
 
 
-
-
-
-
-
 class Mlp(nn.Module):
     """ MLP as used in Vision Transformer, MLP-Mixer and related networks
     """
+
     def __init__(self, in_features, hidden_features=None, out_features=None, act_layer=nn.GELU, drop=0.):
         super().__init__()
         out_features = out_features or in_features
@@ -180,15 +182,20 @@ class Attention(nn.Module):
         self.proj_drop = nn.Dropout(proj_drop)
 
     def forward(self, x, num_layer):
-        B, N, C = x.shape  # torch.Size([num_variants,batch_size,  num_patches, embedding_dim])
-        q = self.Wq_odd(x).reshape(B, N, self.num_heads, C // self.num_heads).permute(0, 2, 1, 3)  # torch.Size([batch, #heads, #patches, embedding])
-        kv = self.Wkv_odd(x).reshape(B, N, 2, C // self.num_heads).permute(2, 0, 1, 3)
+        # torch.Size([num_variants,batch_size,  num_patches, embedding_dim])
+        B, N, C = x.shape
+        # torch.Size([batch, #heads, #patches, embedding])
+        q = self.Wq_odd(x).reshape(B, N, self.num_heads, C //
+                                   self.num_heads).permute(0, 2, 1, 3)
+        kv = self.Wkv_odd(x).reshape(
+            B, N, 2, C // self.num_heads).permute(2, 0, 1, 3)
         k, v = kv[0], kv[1]  # torch.Size([batch, #patches, embedding])
 
         attn = einsum('b h i d, b  j d -> b  h i j', q, k) * self.scale
         attn = attn.softmax(dim=-1)
         attn = self.attn_drop(attn)
-        x = einsum('b h i j, b j d -> b h i d', attn, v).transpose(1, 2).reshape(B, N, C)
+        x = einsum('b h i j, b j d -> b h i d', attn,
+                   v).transpose(1, 2).reshape(B, N, C)
         x = self.proj(x)
         x = self.proj_drop(x)
         return x
@@ -197,12 +204,13 @@ class Attention(nn.Module):
         # N - num tokens
         flops = 0
         flops += N * self.dim * self.dim
-        flops += 2  * N * self.dim * self.dim
+        flops += 2 * N * self.dim * self.dim
         flops += self.num_heads * N * (self.dim // self.num_heads) * N
         flops += self.num_heads * N * N * (self.dim // self.num_heads)
         flops += N * self.dim * self.dim
 
         return flops
+
 
 class Attention_variants(nn.Module):
     def __init__(self, num_variants, dim, num_heads=8, qkv_bias=False, qk_scale=None, attn_drop=0., proj_drop=0.):
@@ -213,24 +221,30 @@ class Attention_variants(nn.Module):
         self.scale = qk_scale or head_dim ** -0.5
         self.num_variants = num_variants
         self.dim = dim
-        self.Wkv_even = nn.Linear(dim,  2* head_dim, bias=qkv_bias)
+        self.Wkv_even = nn.Linear(dim,  2 * head_dim, bias=qkv_bias)
         self.Wq_even = nn.Linear(dim, dim, bias=qkv_bias)
         self.attn_drop = nn.Dropout(attn_drop)
         self.proj = nn.Linear(dim, dim)
         self.proj_drop = nn.Dropout(proj_drop)
 
     def forward(self, x, variants_patches, num_layer):
-        num_variants, B, N, C = variants_patches.shape  # torch.Size([num_variants,batch_size,  num_patches, embedding_dim])
+        # torch.Size([num_variants,batch_size,  num_patches, embedding_dim])
+        num_variants, B, N, C = variants_patches.shape
         assert num_variants == self.num_variants, f
         "num variants ({num_variants}) doesn't match model ({self.num_variants})."
 
-        variants_patches = variants_patches.permute(1, 0, 2, 3)  # torch.Size([batch, #varaints , #patches, embedding])
-        q = self.Wq_even(x).reshape(B, N, self.num_heads, C // self.num_heads).permute(0, 2, 1, 3).unsqueeze(dim=-2) # torch.Size([batch, #heads, #patches,1, embedding])
-        kv = self.Wkv_even(variants_patches).reshape(B, num_variants, N, 2, C // self.num_heads).permute(3, 0, 2, 1, 4).unsqueeze(dim=2)
+        # torch.Size([batch, #varaints , #patches, embedding])
+        variants_patches = variants_patches.permute(1, 0, 2, 3)
+        q = self.Wq_even(x).reshape(B, N, self.num_heads, C // self.num_heads).permute(
+            0, 2, 1, 3).unsqueeze(dim=-2)  # torch.Size([batch, #heads, #patches,1, embedding])
+        kv = self.Wkv_even(variants_patches).reshape(
+            B, num_variants, N, 2, C // self.num_heads).permute(3, 0, 2, 1, 4).unsqueeze(dim=2)
 
-        k, v = kv[0], kv[1]  # k:  torch.Size([batch,  #patches,  #varaints, embedding])            v:  torch.Size([batch, 1 ,   #patches,  #varaints, embedding])
+        # k:  torch.Size([batch,  #patches,  #varaints, embedding])            v:  torch.Size([batch, 1 ,   #patches,  #varaints, embedding])
+        k, v = kv[0], kv[1]
 
-        attn = (q @ k.transpose(-2, -1)) * self.scale  # attn:  torch.Size([batch, #heads, #patches, 1, #varaints ])
+        # attn:  torch.Size([batch, #heads, #patches, 1, #varaints ])
+        attn = (q @ k.transpose(-2, -1)) * self.scale
 
         attn = attn.softmax(dim=-1)
         attn = self.attn_drop(attn)
@@ -246,8 +260,10 @@ class Attention_variants(nn.Module):
         flops = 0
         flops += N * self.dim * self.dim
         flops += 2 * self.num_variants * N * self.dim * self.dim
-        flops += self.num_heads * N * (self.dim // self.num_heads) * self.num_variants
-        flops += self.num_heads * N * self.num_variants * (self.dim // self.num_heads)
+        flops += self.num_heads * N * \
+            (self.dim // self.num_heads) * self.num_variants
+        flops += self.num_heads * N * self.num_variants * \
+            (self.dim // self.num_heads)
         flops += N * self.dim * self.dim
         return flops
 
@@ -255,24 +271,26 @@ class Attention_variants(nn.Module):
 class Reduce_image_size(nn.Module):
     def __init__(self, dim, dim_out, seq_len):
         super().__init__()
-        self.conv =  nn.Conv2d(dim, dim_out, 3, padding = 1)
-        self.norm =  partial(nn.LayerNorm, eps=1e-6)(dim_out)
-        self.pool = nn.MaxPool2d(3, stride = 2, padding = 1)
+        self.conv = nn.Conv2d(dim, dim_out, 3, padding=1)
+        self.norm = partial(nn.LayerNorm, eps=1e-6)(dim_out)
+        self.pool = nn.MaxPool2d(3, stride=2, padding=1)
         self.img_size = seq_len ** 0.5
         self.dim_out = dim_out
         self.dim = dim
+
     def forward(self, x):
         B, embedding_dim, h, w = x.shape
         x = self.conv(x)
-        x= x.permute(0,2, 3,1) # 44*128, 32, 32, 192
-        x = self.norm(x) #TODO: layernorm on embedding dim?
-        x = x.permute(0,3,1,2) # 44*128, 192, 32, 32
+        x = x.permute(0, 2, 3, 1)  # 44*128, 32, 32, 192
+        x = self.norm(x)  # TODO: layernorm on embedding dim?
+        x = x.permute(0, 3, 1, 2)  # 44*128, 192, 32, 32
         x = self.pool(x)
         _, embedding_dim, h_new, w_new = x.shape
 
-        x = x.reshape( B, embedding_dim, h_new, w_new)
+        x = x.reshape(B, embedding_dim, h_new, w_new)
 
         return x
+
     def flops(self):
         Ho, Wo = self.img_size, self.img_size
         flops = Ho * Wo * self.dim_out * self.dim * 3 * 3
@@ -290,8 +308,10 @@ class Transformer_first(nn.Module):
         self.dim = dim
 
         self.layers = nn.ModuleList([])
-        self.pos_emb = nn.Parameter(torch.zeros(num_variants, num_patches, dim))
-        self.drop_path = DropPath(drop_path) if drop_path > 0. else nn.Identity()
+        self.pos_emb = nn.Parameter(
+            torch.zeros(num_variants, num_patches, dim))
+        self.drop_path = DropPath(
+            drop_path) if drop_path > 0. else nn.Identity()
         self.norm2 = norm_layer(dim)
         mlp_hidden_dim = int(dim * mlp_ratio)
         self.num_variants = num_variants
@@ -300,9 +320,10 @@ class Transformer_first(nn.Module):
 
         for i in range(depth):
             self.layers.append(nn.ModuleList([
-                 Attention(num_variants, dim, num_heads=num_heads, qkv_bias=qkv_bias, qk_scale=qk_scale, attn_drop=attn_drop, proj_drop=proj_drop) if not i == 0
-                                             else Attention_variants(num_variants, dim, num_heads=num_heads, qkv_bias=qkv_bias, qk_scale=qk_scale, attn_drop=attn_drop, proj_drop=proj_drop),
-                Mlp(in_features=dim, hidden_features=mlp_hidden_dim, act_layer=act_layer, drop=proj_drop)
+                PerformerSelfAttention(dim, num_heads=num_heads, qkv_bias=qkv_bias, qk_scale=qk_scale, attn_drop=attn_drop, proj_drop=proj_drop) if not i == 0
+                else Attention_variants(num_variants, dim, num_heads=num_heads, qkv_bias=qkv_bias, qk_scale=qk_scale, attn_drop=attn_drop, proj_drop=proj_drop),
+                Mlp(in_features=dim, hidden_features=mlp_hidden_dim,
+                    act_layer=act_layer, drop=proj_drop)
             ]))
 
         trunc_normal_(self.pos_emb, std=.02)
@@ -319,9 +340,11 @@ class Transformer_first(nn.Module):
         num_layer = 0
         for attn, mlp in self.layers:
             if num_layer == 0:
-                x = x + self.drop_path(attn(self.norm1(x), self.norm1(patches), num_layer=num_layer))
+                x = x + self.drop_path(attn(self.norm1(x),
+                                       self.norm1(patches), num_layer=num_layer))
             else:
-                x = x + self.drop_path(attn(self.norm1(x), num_layer=num_layer))
+                x = x + self.drop_path(attn(self.norm1(x),
+                                       num_layer=num_layer))
 
             x = x + self.drop_path(mlp(self.norm2(x)))
             num_layer += 1
@@ -335,7 +358,7 @@ class Transformer_first(nn.Module):
         for attn, mlp in self.layers:
             flops += attn.flops(self.num_patches)
             flops += self.num_patches * self.dim
-            flops += 2* self.num_patches * self.dim * self.mlp_hidden_dim
+            flops += 2 * self.num_patches * self.dim * self.mlp_hidden_dim
             flops += self.num_patches * self.dim
         return flops
 
@@ -350,7 +373,8 @@ class Transformer(nn.Module):
 
         self.layers = nn.ModuleList([])
         self.pos_emb = nn.Parameter(torch.zeros(num_patches, dim))
-        self.drop_path = DropPath(drop_path) if drop_path > 0. else nn.Identity()
+        self.drop_path = DropPath(
+            drop_path) if drop_path > 0. else nn.Identity()
         self.norm2 = norm_layer(dim)
         mlp_hidden_dim = int(dim * mlp_ratio)
         self.num_variants = num_variants
@@ -359,8 +383,10 @@ class Transformer(nn.Module):
 
         for _ in range(depth):
             self.layers.append(nn.ModuleList([
-                Attention(num_variants, dim, num_heads=num_heads, qkv_bias=qkv_bias, qk_scale=qk_scale, attn_drop=attn_drop, proj_drop=proj_drop),
-                Mlp(in_features=dim, hidden_features=mlp_hidden_dim, act_layer=act_layer, drop=proj_drop)
+                PerformerSelfAttention(dim, num_heads=num_heads, qkv_bias=qkv_bias,
+                                       qk_scale=qk_scale, attn_drop=attn_drop, proj_drop=proj_drop),
+                Mlp(in_features=dim, hidden_features=mlp_hidden_dim,
+                    act_layer=act_layer, drop=proj_drop)
             ]))
 
         trunc_normal_(self.pos_emb, std=.02)
@@ -376,7 +402,7 @@ class Transformer(nn.Module):
         for attn, mlp in self.layers:
             x = x + self.drop_path(attn(self.norm1(x), num_layer=num_layer))
             x = x + self.drop_path(mlp(self.norm2(x)))
-            num_layer +=1
+            num_layer += 1
         return x
 
     def flops(self):
@@ -387,30 +413,34 @@ class Transformer(nn.Module):
             print("num patches: ", self.num_patches)
 
             flops += attn.flops(self.num_patches)
-            print("attention flops: ", flops/ 1e9)
+            print("attention flops: ", flops / 1e9)
             # norm
             flops += self.num_patches * self.dim
-            print("norm flops: ", flops/ 1e9)
+            print("norm flops: ", flops / 1e9)
 
             # mlp
-            flops += 2* self.num_patches * self.dim * self.mlp_hidden_dim
-            print("mlp flops: ", flops/ 1e9)
+            flops += 2 * self.num_patches * self.dim * self.mlp_hidden_dim
+            print("mlp flops: ", flops / 1e9)
 
             # norm
             flops += self.num_patches * self.dim
-            print("norm flops: ", flops/ 1e9)
+            print("norm flops: ", flops / 1e9)
 
         return flops
+
+
 class PatchEmbed(nn.Module):
     """ 2D Image to Patch Embedding
     """
+
     def __init__(self, img_size=224, patch_size=16, stride_size=1, padding_size=1, in_chans=3, embed_dim=768, norm_layer=None):
         super().__init__()
-        img_size = (img_size,img_size)
-        patch_size = (patch_size,patch_size)
+        img_size = (img_size, img_size)
+        patch_size = (patch_size, patch_size)
         self.img_size = img_size
         self.patch_size = patch_size
-        self.grid_size = (img_size[0] // patch_size[0], img_size[1] // patch_size[1])
+        self.grid_size = (img_size[0] // patch_size[0],
+                          img_size[1] // patch_size[1])
         self.num_patches = self.grid_size[0] * self.grid_size[1]
         self.patch_size = patch_size
         self.embed_dim = embed_dim
@@ -439,7 +469,8 @@ class PatchEmbed(nn.Module):
 
         for _ in range(NUM_VARIANTS):
             self.projections.append(
-                nn.Conv2d(in_chans, embed_dim, kernel_size=patch_size, stride=stride_size, padding=padding_size)
+                nn.Conv2d(in_chans, embed_dim, kernel_size=patch_size,
+                          stride=stride_size, padding=padding_size)
             )
 
         self.norm = norm_layer(embed_dim) if norm_layer else nn.Identity()
@@ -449,16 +480,15 @@ class PatchEmbed(nn.Module):
         assert H == self.img_size[0] and W == self.img_size[1], \
             f"Input image size ({H}*{W}) doesn't match model ({self.img_size[0]}*{self.img_size[1]})."
 
-
         patches = []
         img_new = img
         new_patch = self.norm(self.projections[0](img_new))
         new_patch = new_patch.flatten(2).transpose(1, 2)
         patches.append(new_patch)
 
-        paddings = [(1,0), (0,1), (-1,0), (0,-1), (2,0), (0,2), (-2,0), (0,-2),
-                     (1,1), (1,2), (1, -1), (-1,1), (-1,2), (-1,-1), (2,1),
-                     (2,2), (2,-1)]
+        paddings = [(1, 0), (0, 1), (-1, 0), (0, -1), (2, 0), (0, 2), (-2, 0), (0, -2),
+                    (1, 1), (1, 2), (1, -1), (-1, 1), (-1, 2), (-1, -1), (2, 1),
+                    (2, 2), (2, -1)]
         for i in range(len(paddings)):
             cur_padding = paddings[i]
             img_new = torch.roll(img, shifts=cur_padding, dims=(2, 3))
@@ -466,24 +496,25 @@ class PatchEmbed(nn.Module):
             new_patch = new_patch.flatten(2).transpose(1, 2)
             patches.append(new_patch)
 
-
         patches = torch.stack(patches)
 
-        return  patches
+        return patches
 
     def flops(self):
         Ho, Wo = self.grid_size
         for i in range(10):
-            flops = Ho * Wo * self.embed_dim * self.in_chans * (self.patch_size[0] * self.patch_size[1])
+            flops = Ho * Wo * self.embed_dim * self.in_chans * \
+                (self.patch_size[0] * self.patch_size[1])
             flops += Ho * Wo * self.embed_dim
         return flops
 
 
 class ShiftingTransformer(nn.Module):
-    def __init__(self,*, scaling_factor, output_dir, num_variants, image_size,patch_size,num_classes,embedding_dim,heads,num_hierarchies,num_layers_per_block, mlp_mult = 4,channels = 3, dim_head = 64, qkv_bias=True,attn_drop=0.0,
-                 proj_drop=0.0,stochastic_depth_drop = 0.1 , init_patch_embed_size =1, kernel_size=3, stride_size=1, padding_size=1):
+    def __init__(self, *, scaling_factor, output_dir, num_variants, image_size, patch_size, num_classes, embedding_dim, heads, num_hierarchies, num_layers_per_block, mlp_mult=4, channels=3, dim_head=64, qkv_bias=True, attn_drop=0.0,
+                 proj_drop=0.0, stochastic_depth_drop=0.1, init_patch_embed_size=1, kernel_size=3, stride_size=1, padding_size=1):
         super().__init__()
-        assert (image_size % patch_size) == 0, 'Image dimensions must be divisible by the patch size.'
+        assert (image_size %
+                patch_size) == 0, 'Image dimensions must be divisible by the patch size.'
         fmap_size = image_size // patch_size
         len_pyramid = len(num_layers_per_block)
         input_size_after_patch = image_size // init_patch_embed_size
@@ -497,7 +528,7 @@ class ShiftingTransformer(nn.Module):
         self.patch_size = patch_size
         self.kernel_size = kernel_size
         self.stride_size = stride_size
-        self.padding_size= padding_size
+        self.padding_size = padding_size
         self.num_hierarchies = num_hierarchies
         hierarchies = list(reversed(range(num_hierarchies)))
         layer_heads = heads
@@ -507,13 +538,15 @@ class ShiftingTransformer(nn.Module):
         self.start_embedding = embedding_dim[0][0]
         self.end_embedding = embedding_dim[-1][-1]
         # dim_pairs = zip(layer_dims[:-1], layer_dims[1:])
-        num_blocks = (initial_num_blocks, initial_num_blocks, initial_num_blocks , initial_num_blocks)
+        num_blocks = (initial_num_blocks, initial_num_blocks,
+                      initial_num_blocks, initial_num_blocks)
         if num_hierarchies == 4:
-            seq_len = (initial_num_blocks, initial_num_blocks//(scaling_factor), initial_num_blocks//(scaling_factor**2), initial_num_blocks//(scaling_factor**3))
+            seq_len = (initial_num_blocks, initial_num_blocks//(scaling_factor),
+                       initial_num_blocks//(scaling_factor**2), initial_num_blocks//(scaling_factor**3))
         elif num_hierarchies == 3:
-            seq_len = (initial_num_blocks, initial_num_blocks//(scaling_factor), initial_num_blocks//(scaling_factor**2))
+            seq_len = (initial_num_blocks, initial_num_blocks //
+                       (scaling_factor), initial_num_blocks//(scaling_factor**2))
         self.end_num_patches = seq_len[-1]
-
 
         self.to_patch_embedding = PatchEmbed(img_size=image_size, patch_size=self.kernel_size, stride_size=self.stride_size, padding_size=padding_size, in_chans=3,
                                              embed_dim=self.start_embedding)
@@ -522,14 +555,14 @@ class ShiftingTransformer(nn.Module):
         num_blocks = cast_tuple(num_blocks, num_hierarchies)
         seq_lens = cast_tuple(seq_len, num_hierarchies)
 
-        dim_pairs = cast_tuple(layer_dims,num_hierarchies)
+        dim_pairs = cast_tuple(layer_dims, num_hierarchies)
         self.layers = nn.ModuleList([])
 
         # print("build pyramid: ")
         # print("levels:", hierarchies, "heds: ", layer_heads, "dim paors: ", dim_pairs, "block repeats: ", block_repeats, "num blocks: ", num_blocks)
-        for level, heads, (dim_in, dim_out), block_repeat, seq_len in zip(hierarchies, layer_heads, dim_pairs, block_repeats,seq_lens):
+        for level, heads, (dim_in, dim_out), block_repeat, seq_len in zip(hierarchies, layer_heads, dim_pairs, block_repeats, seq_lens):
             print("level: ", level, "heads: ", heads, "dim in dim out: ", (dim_in, dim_out),
-                  "block repeat: ", block_repeat,"seq len: ", seq_len)
+                  "block repeat: ", block_repeat, "seq len: ", seq_len)
             with open(output_dir + "/pyramid_parameters.txt", "a+") as text_file:
                 text_file.write(" level: ")
                 text_file.write(str(level))
@@ -553,28 +586,28 @@ class ShiftingTransformer(nn.Module):
                 Transformer(num_variants, seq_len, depth, dim_in, heads, mlp_mult, qkv_bias=qkv_bias, attn_drop=attn_drop,
                             drop_path=stochastic_depth_drop, proj_drop=proj_drop) if not is_first else
                 Transformer_first(num_variants, seq_len, depth, dim_in, heads, mlp_mult, qkv_bias=qkv_bias, attn_drop=attn_drop,
-                            drop_path=stochastic_depth_drop, proj_drop=proj_drop),
-                Reduce_image_size(dim_in, dim_out, seq_len) if not is_last else nn.Identity()
+                                  drop_path=stochastic_depth_drop, proj_drop=proj_drop),
+                Reduce_image_size(
+                    dim_in, dim_out, seq_len) if not is_last else nn.Identity()
             ]))
-
 
         self.norm = partial(nn.LayerNorm, eps=1e-6)(self.end_embedding)
         self.mlp_head = nn.Linear(self.end_embedding, num_classes)
         self.apply(_init_vit_weights)
         text_file.close()
 
-
     def forward(self, img):
         # input shape:  128, 3, 32 , 32
         # print("input size: ", img.shape)
-        patches = self.to_patch_embedding(img) # 44, 128, 256,192
+        patches = self.to_patch_embedding(img)  # 44, 128, 256,192
         # print("x after embedding: ", patches.shape)
         num_hierarchies = len(self.layers)
         for level, (transformer, reduce_image_size) in zip(reversed(range(num_hierarchies)), self.layers):
             patches = transformer(patches)
 
             if level > 0:
-                grid_size = (int(patches.shape[1]**0.5), int(patches.shape[1]**0.5))
+                grid_size = (
+                    int(patches.shape[1]**0.5), int(patches.shape[1]**0.5))
                 patches = to_image_plane(patches, grid_size, self.patch_size)
                 patches = reduce_image_size(patches)
                 patches = to_patches_plane(patches, self.patch_size)
@@ -582,36 +615,36 @@ class ShiftingTransformer(nn.Module):
         patches_pool = torch.mean(patches, dim=(1))
         return self.mlp_head(patches_pool)
 
-
     def flops(self):
         flops = 0
         flops += self.to_patch_embedding.flops()
-        print(flops/ 1e9)
+        print(flops / 1e9)
         for level, (transformer, reduce_image_size) in zip(reversed(range(len(self.layers))), self.layers):
             flops += transformer.flops()
-            print(flops/ 1e9)
+            print(flops / 1e9)
             if level > 0:
                 flops += reduce_image_size.flops()
-                print(flops/ 1e9)
+                print(flops / 1e9)
         # last norm
         flops += self.end_embedding * self.end_num_patches
-        print(flops/ 1e9)
+        print(flops / 1e9)
         # MLP
         flops += self.end_embedding * self.num_classes
-        print(flops/ 1e9)
+        print(flops / 1e9)
         return flops
 
 
 def to_patches_plane(x, patch_size):
     patch_size = (patch_size, patch_size)
-    batch, depth, height, width = x.shape # ([128, 192, 8, 8])
-    x = x.reshape( batch, depth, height*width) #  128, 192, 64
-    x = x.permute(0,2,1) #  128, 64, 192
+    batch, depth, height, width = x.shape  # ([128, 192, 8, 8])
+    x = x.reshape(batch, depth, height*width)  # 128, 192, 64
+    x = x.permute(0, 2, 1)  # 128, 64, 192
     return x
 
+
 def to_image_plane(x, grid_size, patch_size):
-    batch, num_patches, depth = x.shape #  128, 256, 192
-    x = x.permute(0,2,1)  # 128, 192, 256
+    batch, num_patches, depth = x.shape  # 128, 256, 192
+    x = x.permute(0, 2, 1)  # 128, 192, 256
     x = x.reshape(batch, depth, grid_size[0], grid_size[1])
 
     return x
